@@ -11,8 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const table = document.createElement('table');
         table.innerHTML = `
             <tr>
-                <th>Job Title</th>
                 <th>Company Name</th>
+                <th>Job Title</th>
                 <th>Salary Data</th>
                 <th>Date Saved</th>
             </tr>
