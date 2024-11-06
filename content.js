@@ -9,15 +9,20 @@ async function logMessage(message) {
         chrome.storage.local.set({ logs }, () => console.log("Log saved:", logEntry));
     });
 }
-
 // Function to extract job details
 function extractJobDetails() {
     try {
         const jobTitleElement = document.getElementsByClassName('job-details-jobs-unified-top-card__job-title')[0];
         const companyNameElement = document.getElementsByClassName('job-details-jobs-unified-top-card__company-name')[0];
 
-        const jobTitle = jobTitleElement ? jobTitleElement.innerText.split('·')[0].trim().replace(' ', '-') : null;
-        const companyName = companyNameElement ? companyNameElement.innerText.split('·')[0].trim().replace(' ', '-') : null;
+        // Helper function to format the string
+        const formatString = (str) =>
+            str.trim()
+               .replace(/[^a-zA-Z0-9&\s-]+/g, '') // Remove all special characters except &
+               .replace(/[\s-]+/g, '-');          // Replace spaces and hyphens with a single hyphen
+
+        const jobTitle = jobTitleElement ? formatString(jobTitleElement.innerText.split('·')[0]) : null;
+        const companyName = companyNameElement ? formatString(companyNameElement.innerText.split('·')[0]) : null;
 
         if (!jobTitle || !companyName) throw new Error("Missing job title or company name");
 
@@ -27,6 +32,7 @@ function extractJobDetails() {
         return null;
     }
 }
+
 
 // Check for existing salary data in mock DB
 async function checkMockDB(jobDetails) {
@@ -63,11 +69,14 @@ async function saveToMockDB(jobDetails, salaryData) {
 // Show loading message in overlay
 function showLoading() {
     overlay.innerHTML = "<div>Loading salary data...</div>";
+    button.textContent = "Loading...";
+    button.disabled = true;
 }
 var jobDetails;
 
 // Handle button click to fetch or display salary data
 async function handleButtonClick() {
+    console.log("Button clicked/n/n/n");
     jobDetails = extractJobDetails();
     if (jobDetails) {
         await logMessage(`Extracted job details: ${JSON.stringify(jobDetails)}`);
@@ -86,9 +95,11 @@ async function handleButtonClick() {
     }
 }
 
-
 // Listen for messages from the background script with fetched salary data or an error
 chrome.runtime.onMessage.addListener(async (message) => {
+    button.disabled = false;
+    button.textContent = "Get Salary";
+
     if (message.salaryData) {
         if (jobDetails) {
             updateOverlay(message.salaryData, null);
@@ -101,14 +112,31 @@ chrome.runtime.onMessage.addListener(async (message) => {
     }
 });
 
+// Create a draggable container to hold both button and overlay
+const container = document.createElement('div');
+container.style.position = 'fixed';
+container.style.bottom = '120px';
+container.style.right = '20px';
+container.style.zIndex = '1000';
+container.style.cursor = 'move';
+document.body.appendChild(container);
 
+
+
+const overlay = document.createElement('div');
+overlay.id = "OverLay";
+overlay.style.display = "none"; // Initially hidden until data is shown
+overlay.style.width = "250px"; // Fixed width
+overlay.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+overlay.style.border = '8px solid #ddd';
+overlay.style.borderRadius = '5px';
+overlay.style.padding = '10px';
+overlay.style.fontSize = '16px';
+overlay.style.color = 'black';
+container.appendChild(overlay);
 // Create button and overlay for display
 const button = document.createElement("button");
 button.innerText = "Get Salary";
-button.style.position = "fixed";
-button.style.bottom = "120px";
-button.style.right = "20px";
-button.style.zIndex = "1000";
 button.style.padding = "10px 20px";
 button.style.backgroundColor = "#0073b1";
 button.style.color = "white";
@@ -117,41 +145,83 @@ button.style.fontSize = "16px";
 button.style.fontWeight = "bold";
 button.style.borderRadius = "5px";
 button.style.cursor = "pointer";
-document.body.appendChild(button);
+button.style.display = "block";
+button.style.width = "100%"; // Fixed width
+button.style.height = "auto"; // Fixed height
+container.appendChild(button);
+// Add event listener for the button
 button.addEventListener("click", handleButtonClick);
-const overlay = document.createElement('div');
-overlay.id = "OverLay";
-
-
 
 // Function to update overlay
 function updateOverlay(salary = null, error = null) {
     if (jobDetails) {
-        overlay.style.position = 'fixed';
-        overlay.style.bottom = '170px';
-        overlay.style.right = '20px';
-        overlay.style.width = '250px';
-        overlay.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-        overlay.style.border = '8px solid #ddd';
-        overlay.style.borderRadius = '5px';
-        overlay.style.padding = '10px';
-        overlay.style.zIndex = '1000';
-        overlay.style.fontSize = '16px';
-        overlay.style.color = 'black';
-        document.body.appendChild(overlay);
-        document.getElementById('OverLay').style.display = 'block';
-
+        overlay.style.display = 'block'; // Show overlay
         overlay.innerHTML = `
-            <div>        <span id='close'>x</span>
-<strong>Job Title:</strong> ${jobDetails.jobTitle}</div>
+            <div><span id='close'>x</span>
+            <strong>Job Title:</strong> ${jobDetails.jobTitle}</div>
             <div><strong>Company Name:</strong> ${jobDetails.companyName}</div>
             ${salary ? `<div><strong>Estimated Salary:</strong> ${salary}</div>` : `<div><strong>Estimated Salary:</strong> Couldnt find salary, please check here:-\n <a href=${error} target="_blank">Link</a> </div>`}
         `;
         document.getElementById('close').onclick = () => {
-            document.getElementById('OverLay').style.display = 'none';
+            overlay.style.display = 'none';
             return false;
         };
     } else {
         overlay.innerHTML = `<div><strong>Job Details Not Found</strong></div>`;
     }
 }
+
+// Add drag functionality to the container
+let isDragging = false;
+let offsetX, offsetY;
+
+container.addEventListener("mousedown", (e) => {
+    isDragging = true;
+    offsetX = e.clientX - container.getBoundingClientRect().left;
+    offsetY = e.clientY - container.getBoundingClientRect().top;
+});
+
+document.addEventListener("mousemove", (e) => {
+    if (isDragging) {
+        container.style.left = `${e.clientX - offsetX}px`;
+        container.style.top = `${e.clientY - offsetY}px`;
+        container.style.bottom = "unset"; // Remove bottom to avoid conflicts with top positioning
+        container.style.right = "unset"; // Remove right to avoid conflicts with left positioning
+    }
+});
+
+document.addEventListener("mouseup", () => {
+    isDragging = false;
+});
+
+// // Function to update overlay
+// function updateOverlay(salary = null, error = null) {
+//     if (jobDetails) {
+//         overlay.style.position = 'fixed';
+//         overlay.style.bottom = '170px';
+//         overlay.style.right = '20px';
+//         overlay.style.width = '250px';
+//         overlay.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+//         overlay.style.border = '8px solid #ddd';
+//         overlay.style.borderRadius = '5px';
+//         overlay.style.padding = '10px';
+//         overlay.style.zIndex = '1000';
+//         overlay.style.fontSize = '16px';
+//         overlay.style.color = 'black';
+//         document.body.appendChild(overlay);
+//         document.getElementById('OverLay').style.display = 'block';
+
+//         overlay.innerHTML = `
+//             <div><span id='close'>x</span>
+//             <strong>Job Title:</strong> ${jobDetails.jobTitle}</div>
+//             <div><strong>Company Name:</strong> ${jobDetails.companyName}</div>
+//             ${salary ? `<div><strong>Estimated Salary:</strong> ${salary}</div>` : `<div><strong>Estimated Salary:</strong> Couldnt find salary, please check here:-\n <a href=${error} target="_blank">Link</a> </div>`}
+//         `;
+//         document.getElementById('close').onclick = () => {
+//             document.getElementById('OverLay').style.display = 'none';
+//             return false;
+//         };
+//     } else {
+//         overlay.innerHTML = `<div><strong>Job Details Not Found</strong></div>`;
+//     }
+// }
